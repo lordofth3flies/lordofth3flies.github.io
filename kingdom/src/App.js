@@ -165,17 +165,9 @@ const App = () => {
 
     useEffect(() => {
         try {
-            // IMPORTANT: For actual deployment, replace these with your Firebase project's config.
-            // Example using Vite environment variables:
-            const firebaseConfig = JSON.parse(import.meta.env.VITE_FIREBASE_CONFIG);
-            const currentAppId = import.meta.env.VITE_APP_ID;
-            const initialAuthToken = import.meta.env.VITE_INITIAL_AUTH_TOKEN || null;
-			
-            // For Canvas environment:
-            // const currentAppId = typeof __app_id !== 'undefined' ? __app_id : 'kingodm';
-            // const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
-            // const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-
+            const currentAppId = typeof __app_id !== 'undefined' ? __app_id : 'default-council-app-id';
+            const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+            const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
             setAppId(currentAppId);
 
@@ -1985,6 +1977,24 @@ const App = () => {
             </div>
             {/* Animated Background */}
             <AnimatedBackground colors={Object.values(provinceColors)} />
+            {/* Tailwind CSS CDN */}
+            <script src="https://cdn.tailwindcss.com"></script>
+            {/* Inter Font */}
+            <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+            <style>
+                {`
+                body {
+                    font-family: 'Inter', sans-serif;
+                }
+                @keyframes pulse-red {
+                    0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+                    50% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+                }
+                .animate-pulse {
+                    animation: pulse-red 2s infinite;
+                }
+                `}
+            </style>
         </FirebaseContext.Provider>
     );
 };
