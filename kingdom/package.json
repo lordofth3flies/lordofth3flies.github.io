@@ -2,7 +2,7 @@
   "name": "kingdom",
   "version": "0.1.0",
   "private": true,
-  "homepage": "https://lordofth3flies.github.io/kingdom",
+  "homepage": "https://lordofth3flies.github.io",
   "dependencies": {
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^6.6.3",
@@ -23,7 +23,7 @@
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d build -f"
+    "deploy": "gh-pages -d build -b main -f"
   },
   "eslintConfig": {
     "extends": [
