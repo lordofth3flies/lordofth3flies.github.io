@@ -1,21 +1,22 @@
 import React, { useState, useEffect, createContext } from 'react';
-import { auth, db, appId } from './firebase.js'; // Import from your firebase.js file
-import { signInAnonymously, onAuthStateChanged } from 'firebase/auth'; // Import signInAnonymously and onAuthStateChanged
-import { collection, getDocs, setDoc, doc, updateDoc } from 'firebase/firestore'; // Import updateDoc, collection, getDocs, setDoc, doc
+import { auth, db, appId } from './firebase.js';
+import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { collection, getDocs, setDoc, doc, updateDoc } from 'firebase/firestore';
 
 // Import separated components
 import AnimatedBackground from './components/AnimatedBackground.jsx';
 import Login from './components/Login.jsx';
 import Dashboard from './components/Dashboard.jsx';
 import CreateProposal from './components/CreateProposal.jsx';
+import CreateBudgetProposal from './components/CreateBudgetProposal.jsx';
 import ProposalDetail from './components/ProposalDetail.jsx';
 import ScribeReviewPage from './components/ScribeReviewPage.jsx';
 import AdminModifyProvincesModal from './components/AdminModifyProvincesModal.jsx';
 import PasswordResetModal from './components/PasswordResetModal.jsx';
-
+import ProposalTypeSelectionModal from './components/ProposalTypeSelectionModal.jsx';
 
 // Context for Firebase and User
-export const FirebaseContext = createContext(null); // Export the context itself
+export const FirebaseContext = createContext(null);
 
 // Define province colors (can be moved to a separate constants file if preferred)
 const provinceColors = {
@@ -43,10 +44,9 @@ const App = () => {
     const [showPasswordResetModal, setShowPasswordResetModal] = useState(false);
     const [showAdminModifyProvincesModal, setShowAdminModifyProvincesModal] = useState(false);
     const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
+    const [showProposalTypeSelectionModal, setShowProposalTypeSelectionModal] = useState(false);
 
     useEffect(() => {
-        // This effect handles Firebase authentication state changes.
-        // It uses the 'auth' object imported from firebase.js.
         const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
             if (currentUser) {
                 setUser(currentUser);
@@ -64,11 +64,10 @@ const App = () => {
         });
 
         return () => unsubscribe();
-    }, []); // Depend on auth, which is a stable imported object
+    }, []);
 
-    // Fetch provinces once Firebase is ready and appId is available
     useEffect(() => {
-        if (db && isAuthReady && appId) { // Ensure db and appId are available
+        if (db && isAuthReady && appId) {
             const fetchProvinces = async () => {
                 try {
                     const publicProvincesCollectionRef = collection(db, `artifacts/${appId}/public/data/provinces`);
@@ -96,7 +95,6 @@ const App = () => {
                         for (const province of sampleProvinces) {
                             await setDoc(doc(publicProvincesCollectionRef, province.name), province);
                         }
-                        fetchedProvinces = sampleProvinces.map(p => ({ id: p.name, ...p }));
                         setProvinces(fetchedProvinces);
                     }
                 } catch (error) {
@@ -105,9 +103,8 @@ const App = () => {
             };
             fetchProvinces();
         }
-    }, [db, isAuthReady, appId]); // Depend on imported db and appId
+    }, [db, isAuthReady, appId]);
 
-    // Logic for page routing
     let content;
     if (!isAuthReady) {
         content = (
@@ -143,6 +140,20 @@ const App = () => {
                 }}
             />
         );
+    } else if (showProposalTypeSelectionModal) {
+        content = (
+            <ProposalTypeSelectionModal
+                onClose={() => setShowProposalTypeSelectionModal(false)}
+                onSelectLawProposal={() => {
+                    setShowProposalTypeSelectionModal(false);
+                    setCurrentPage('create-proposal');
+                }}
+                onSelectBudgetProposal={() => {
+                    setShowProposalTypeSelectionModal(false);
+                    setCurrentPage('create-budget-proposal');
+                }}
+            />
+        );
     } else if (!userProvince) {
         content = (
             <Login
@@ -152,7 +163,7 @@ const App = () => {
                     setCurrentPage('dashboard');
                 }}
                 provinces={provinces}
-                provinceColors={provinceColors} // Pass provinceColors to Login
+                provinceColors={provinceColors}
                 setShowPasswordResetModal={setShowPasswordResetModal}
                 setCurrentUserProvince={setCurrentUserProvince}
                 setIsAdminLoggedIn={setIsAdminLoggedIn}
@@ -164,7 +175,7 @@ const App = () => {
                 content = (
                     <Dashboard
                         userProvince={userProvince}
-                        onCreateProposal={() => setCurrentPage('create-proposal')}
+                        onCreateProposal={() => setShowProposalTypeSelectionModal(true)}
                         onViewProposal={(id) => {
                             setSelectedProposalId(id);
                             setCurrentPage('proposal-detail');
@@ -176,9 +187,17 @@ const App = () => {
                     />
                 );
                 break;
-            case 'create-proposal':
+            case 'create-proposal': // Law Proposal
                 content = (
                     <CreateProposal
+                        onBackToDashboard={() => setCurrentPage('dashboard')}
+                        userProvince={userProvince}
+                    />
+                );
+                break;
+            case 'create-budget-proposal': // New Budget Proposal
+                content = (
+                    <CreateBudgetProposal
                         onBackToDashboard={() => setCurrentPage('dashboard')}
                         userProvince={userProvince}
                     />
@@ -220,12 +239,11 @@ const App = () => {
     }
 
     return (
-        <FirebaseContext.Provider value={{ db, auth, appId: appId, user, provinces, provinceColors }}> {/* Pass imported appId */}
+        <FirebaseContext.Provider value={{ db, auth, appId: appId, user, provinces, provinceColors }}>
             <div className="font-inter">
                 {content}
             </div>
             <AnimatedBackground colors={Object.values(provinceColors)} adminColor={provinceColors["Administrator"]} />
-            {/* Tailwind CSS CDN and Inter Font are in public/index.html */}
         </FirebaseContext.Provider>
     );
 };

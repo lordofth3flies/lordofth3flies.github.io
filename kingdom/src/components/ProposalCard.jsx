@@ -3,7 +3,7 @@ import { FirebaseContext } from '../App'; // Adjust path
 
 const ProposalCard = ({ proposal, statusInfo, onViewProposal }) => {
     const { provinces } = useContext(FirebaseContext); // Access provinces from context
-    const { id, title, synopsis, proposerProvince, dateCreated, expiryDate, votes, status: proposalStatus, addedToLawBookDate, legislationNumber, isMandatory } = proposal;
+    const { id, title, synopsis, proposerProvince, dateCreated, expiryDate, votes, status: proposalStatus, addedToLawBookDate, legislationNumber, isMandatory, type, budgetType } = proposal; // Added type and budgetType
     const { style, status } = statusInfo;
 
     const calculateTimeRemaining = (expiry) => {
@@ -31,7 +31,7 @@ const ProposalCard = ({ proposal, statusInfo, onViewProposal }) => {
         if (proposalStatus === 'failed') return 'FAILED';
         if (proposalStatus === 'withdrawn') return 'WITHDRAWN'; // Handle withdrawn status
 
-        if (status !== 'expired' && status !== 'scribe-urgent' || !provinces) return null;
+        if (status !== 'expired' && status !== 'scribe-urgent' && status !== 'withdrawn' || !provinces) return null;
 
         let ayeWeight = 0;
         let nayWeight = 0;
@@ -76,6 +76,9 @@ const ProposalCard = ({ proposal, statusInfo, onViewProposal }) => {
                     <span className="text-gray-500 text-sm font-semibold ml-2">#{legislationNumber}</span>
                 )}
             </div>
+            {type === 'budget' && budgetType && (
+                <p className="text-xs text-gray-500 mb-1">Budget Type: <span className="font-semibold">{budgetType}</span></p>
+            )}
             <p className="text-sm text-gray-600 mb-3 line-clamp-2">{synopsis}</p>
             <div className="flex justify-between items-center text-xs">
                 <div>

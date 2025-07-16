@@ -1,7 +1,7 @@
 import React, { useState, useContext } from 'react';
 import { FirebaseContext } from '../App'; // Adjust path
 import { doc, getDoc } from 'firebase/firestore'; // Import only necessary functions
-import { signInAnonymously } from 'firebase/auth'; // Import only necessary functions
+import { signInAnonymously } from 'firebase/auth'; // Removed setPersistence and browserLocalPersistence from here
 
 const Login = ({ onLoginSuccess, provinces, provinceColors, setShowPasswordResetModal, setCurrentUserProvince, setIsAdminLoggedIn }) => {
     const { db, auth, appId } = useContext(FirebaseContext); // Use imported auth and appId
@@ -48,10 +48,10 @@ const Login = ({ onLoginSuccess, provinces, provinceColors, setShowPasswordReset
         console.log("Entered password:", trimmedPassword);
 
         if (trimmedPassword === provinceData.password) {
-            // Ensure Firebase Auth is signed in (anonymously or via custom token if applicable)
-            if (!auth.currentUser) {
+            // Persistence is now set globally in App.jsx, so no need to set it here.
+            if (!auth.currentUser) { // Check if already authenticated, if not, sign in
                 try {
-                    await signInAnonymously(auth); // Sign in anonymously if not already authenticated
+                    await signInAnonymously(auth); // This sign-in will now use the globally set persistence
                     console.log("Signed in anonymously during login process.");
                 } catch (anonError) {
                     console.error("Error signing in anonymously:", anonError);
@@ -75,7 +75,7 @@ const Login = ({ onLoginSuccess, provinces, provinceColors, setShowPasswordReset
     const selectBgColor = provinceColors[selectedProvince] || '#ffffff';
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4 relative z-10">
+        <div className="min-h-screen flex items-center justify-center p-4 relative z-10">
             <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
                 <h2 className="text-3xl font-bold text-center text-gray-800 mb-6">Council Login</h2>
                 {error && <p className="text-red-500 text-center mb-4">{error}</p>}

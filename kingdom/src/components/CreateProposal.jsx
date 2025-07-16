@@ -204,6 +204,13 @@ const CreateProposal = ({ onBackToDashboard, userProvince }) => {
                 </div>
 
                 <div className="flex justify-between items-center mt-8">
+                    {/* Swapped position of Preview and Cancel */}
+                    <button
+                        onClick={onBackToDashboard} // Cancel button
+                        className="bg-gray-400 hover:bg-gray-500 text-white font-bold py-3 px-6 rounded-xl shadow-md transition duration-200 ease-in-out transform hover:scale-105"
+                    >
+                        Cancel
+                    </button>
                     <button
                         onClick={() => setShowPreview(!showPreview)}
                         className="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-xl shadow-md transition duration-200 ease-in-out transform hover:scale-105"
@@ -221,7 +228,7 @@ const CreateProposal = ({ onBackToDashboard, userProvince }) => {
 
                 {showPreview && (
                     <div className="mt-8">
-                        <h3 className="text-2xl font-bold text-gray-800 mb-4 text-center">Proposal Document Preview</h3>
+                        <h3 className="text-2xl font-bold text-center text-gray-800 mb-4 text-center">Proposal Document Preview</h3>
                         <ProposalPreview />
                     </div>
                 )}

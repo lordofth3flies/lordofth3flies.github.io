@@ -2,6 +2,7 @@ import React, { useState, useEffect, useContext } from 'react';
 import { FirebaseContext } from '../App'; // Adjust path
 import { doc, getDoc, onSnapshot, updateDoc } from 'firebase/firestore'; // Import necessary functions
 import AmendmentForm from './AmendmentForm'; // Adjust path
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts'; // Import Recharts components
 
 // Helper function for highlighting diffs - moved here for local use
 const generateHighlightedDiff = (originalText, amendedText, isAmendmentOfAmendment = false) => {
@@ -43,6 +44,9 @@ const generateHighlightedDiff = (originalText, amendedText, isAmendmentOfAmendme
     }
     return finalRender;
 };
+
+// Define a set of colors for the pie chart slices (duplicated for self-containment)
+const PIE_COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658', '#d0ed57', '#a4de6c', '#83a6ed'];
 
 
 const ProposalDetail = ({ proposalId, onBackToDashboard, userProvince }) => {
@@ -211,10 +215,10 @@ const ProposalDetail = ({ proposalId, onBackToDashboard, userProvince }) => {
             const proposalDocRef = doc(db, `artifacts/${appId}/public/data/proposals`, proposal.id);
             await updateDoc(proposalDocRef, {
                 status: 'withdrawn',
-                expiryDate: new Date().toISOString() // Mark as expired immediately
+                expiryDate: new Date().toISOString()
             });
             setMessage('Proposal withdrawn successfully.');
-            onBackToDashboard(); // Go back to dashboard after withdrawing
+            onBackToDashboard();
         } catch (e) {
             console.error("Error withdrawing proposal:", e);
             setMessage("Failed to withdraw proposal. Please try again.");
@@ -260,6 +264,92 @@ const ProposalDetail = ({ proposalId, onBackToDashboard, userProvince }) => {
     const canKingEndEarly = userProvince === 'Capital' && isVotingActive;
     const canWithdraw = userProvince === proposal.proposerProvince && proposal.status === 'active';
 
+    // Helper to render budget details
+    const renderBudgetDetails = () => {
+        // Prepare data for the pie chart
+        const pieChartData = proposal.lineItems ? proposal.lineItems.map(item => ({
+            name: item.title,
+            value: parseFloat(item.amount)
+        })) : [];
+
+        return (
+            <div className="bg-gray-50 p-6 rounded-xl border border-gray-200 shadow-inner mb-6">
+                <p className="text-gray-700 text-sm mb-2">
+                    <span className="font-semibold">Budget Type:</span> {proposal.budgetType}
+                </p>
+                <p className="text-gray-700 text-sm mb-2">
+                    <span className="font-semibold">Total Amount:</span> ${parseFloat(proposal.totalAmount).toLocaleString()}
+                </p>
+                <p className="text-gray-700 text-sm mb-4">
+                    <span className="font-semibold">Purpose:</span> {proposal.budgetPurpose}
+                </p>
+                <h4 className="text-md font-semibold text-gray-800 mb-2">Line Items:</h4>
+                {proposal.lineItems && proposal.lineItems.length > 0 ? (
+                    <ul className="list-disc list-inside ml-4 mb-4">
+                        {proposal.lineItems.map((item, index) => (
+                            <li key={index} className="text-sm text-gray-700">
+                                <span className="font-medium">{item.title}:</span> ${parseFloat(item.amount).toLocaleString()} - {item.description}
+                            </li>
+                        ))}
+                    </ul>
+                ) : (
+                    <p className="text-sm text-gray-500 mb-4">No line items specified.</p>
+                )}
+
+                {/* Pie Chart for Line Items */}
+                {pieChartData.length > 0 && pieChartData.some(data => data.value > 0) && (
+                    <div className="mt-6 mb-6">
+                        <h4 className="text-md font-bold text-gray-800 mb-2 text-center">Line Item Distribution</h4>
+                        <ResponsiveContainer width="100%" height={300}>
+                            <PieChart>
+                                <Pie
+                                    data={pieChartData}
+                                    cx="50%"
+                                    cy="50%"
+                                    outerRadius={80}
+                                    fill="#8884d8"
+                                    dataKey="value"
+                                    label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                                    labelLine={false}
+                                >
+                                    {pieChartData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                                    ))}
+                                </Pie>
+                                <Tooltip formatter={(value) => `$${value.toLocaleString()}`} />
+                                <Legend />
+                            </PieChart>
+                        </ResponsiveContainer>
+                    </div>
+                )}
+
+                <p className="text-gray-700 mt-4">
+                    <span className="font-semibold">Justification:</span> {proposal.justification}
+                </p>
+            </div>
+        );
+    };
+
+    // Helper to render law details
+    const renderLawDetails = () => (
+        <div className="bg-gray-50 p-6 rounded-xl border border-gray-200 shadow-inner mb-6">
+            <div className="mb-6">
+                {proposal.whereasStatements.filter(s => s.trim() !== '').map((statement, index) => (
+                    <p key={index} className="text-gray-700 mb-2">
+                        <span className="font-semibold">WHEREAS,</span> {statement.trim()};
+                    </p>
+                ))}
+            </div>
+            <p className="text-gray-800 font-bold text-lg mb-2">THEREFORE, let the following changes be enacted:</p>
+            <div className="bg-white p-4 rounded-lg border border-gray-300 whitespace-pre-wrap text-gray-700 font-mono">
+                {proposal.amendment && proposal.amendment.status === 'active' ?
+                    generateHighlightedDiff(proposal.changes, proposal.amendment.amendedText, isAmendmentOfAmendment) :
+                    proposal.changes
+                }
+            </div>
+        </div>
+    );
+
 
     return (
         <div className="min-h-screen bg-gray-100 p-6 font-inter">
@@ -299,6 +389,11 @@ const ProposalDetail = ({ proposalId, onBackToDashboard, userProvince }) => {
                             <p className="text-gray-700 text-sm">
                                 <span className="font-semibold">Status:</span> {proposal.status.toUpperCase()}
                             </p>
+                            {proposal.type && (
+                                <p className="text-gray-700 text-sm">
+                                    <span className="font-semibold">Type:</span> {proposal.type.toUpperCase()}
+                                </p>
+                            )}
                         </div>
 
                         <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
@@ -335,22 +430,8 @@ const ProposalDetail = ({ proposalId, onBackToDashboard, userProvince }) => {
                     </div>
 
                     <div className="md:col-span-2">
-                        <div className="bg-gray-50 p-6 rounded-xl border border-gray-200 shadow-inner mb-6">
-                            <div className="mb-6">
-                                {proposal.whereasStatements.filter(s => s.trim() !== '').map((statement, index) => (
-                                    <p key={index} className="text-gray-700 mb-2">
-                                        <span className="font-semibold">WHEREAS,</span> {statement.trim()};
-                                    </p>
-                                ))}
-                            </div>
-                            <p className="text-gray-800 font-bold text-lg mb-2">THEREFORE, let the following changes be enacted:</p>
-                            <div className="bg-white p-4 rounded-lg border border-gray-300 whitespace-pre-wrap text-gray-700 font-mono">
-                                {proposal.amendment && proposal.amendment.status === 'active' ?
-                                    generateHighlightedDiff(proposal.changes, proposal.amendment.amendedText, isAmendmentOfAmendment) :
-                                    proposal.changes
-                                }
-                            </div>
-                        </div>
+                        {/* Conditionally render details based on proposal type */}
+                        {proposal.type === 'budget' ? renderBudgetDetails() : renderLawDetails()}
 
                         <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 mb-6">
                             <h3 className="text-lg font-semibold text-gray-800 mb-4">Weighted Vote Tally</h3>

@@ -131,7 +131,7 @@ const Dashboard = ({ userProvince, onCreateProposal, onViewProposal, onReviewPas
                         </button>
                     )}
                     <button
-                        onClick={onCreateProposal}
+                        onClick={onCreateProposal} // This will now open the selection modal
                         className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-6 rounded-xl shadow-md transition duration-200 ease-in-out transform hover:scale-105"
                     >
                         Create Proposal
@@ -161,7 +161,6 @@ const Dashboard = ({ userProvince, onCreateProposal, onViewProposal, onReviewPas
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {/* Expired Proposals (Left) */}
                 <div className="col-span-1">
                     <h2 className="text-xl font-semibold text-gray-700 mb-4">Expired Proposals</h2>
                     <div className="space-y-4">
@@ -210,7 +209,6 @@ const Dashboard = ({ userProvince, onCreateProposal, onViewProposal, onReviewPas
                     )}
                 </div>
 
-                {/* Active Proposals (Center) */}
                 <div className="col-span-1">
                     <h2 className="text-xl font-semibold text-gray-700 mb-4">Active Proposals</h2>
                     <div className="space-y-4">
@@ -226,7 +224,6 @@ const Dashboard = ({ userProvince, onCreateProposal, onViewProposal, onReviewPas
                     </div>
                 </div>
 
-                {/* Urgent & Voted Proposals (Right) */}
                 <div className="col-span-1">
                     <h2 className="text-xl font-semibold text-gray-700 mb-4">Urgent & Voted Proposals</h2>
                     <div className="space-y-4">
