@@ -1,6 +1,6 @@
 import React, { useState, useContext } from 'react';
 import { FirebaseContext } from '../App'; // Adjust path
-import { collection, addDoc, getDocs } from 'firebase/firestore'; // Import necessary functions
+import { collection, addDoc, getDocs, query, where } from 'firebase/firestore'; // Import query and where
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts'; // Import Recharts components
 
 const CreateBudgetProposal = ({ onBackToDashboard, userProvince }) => {
@@ -59,24 +59,27 @@ const CreateBudgetProposal = ({ onBackToDashboard, userProvince }) => {
         setLoading(true);
         try {
             const proposalsCollectionRef = collection(db, `artifacts/${appId}/public/data/proposals`);
-            const querySnapshot = await getDocs(proposalsCollectionRef);
+            // Query only for 'budget' type proposals to get the next number
+            const budgetProposalsQuery = query(proposalsCollectionRef, where('type', '==', 'budget'));
+            const querySnapshot = await getDocs(budgetProposalsQuery);
+
             let maxLegislationNumber = 0;
             querySnapshot.forEach(docSnap => {
                 const data = docSnap.data();
-                if (data.legislationNumber) {
-                    const num = parseInt(data.legislationNumber, 10);
+                if (data.legislationNumber && data.legislationNumber.startsWith('B-')) {
+                    const num = parseInt(data.legislationNumber.substring(2), 10); // Extract number after 'B-'
                     if (!isNaN(num) && num > maxLegislationNumber) {
                         maxLegislationNumber = num;
                     }
                 }
             });
-            const nextLegislationNumber = String(maxLegislationNumber + 1).padStart(3, '0');
+            const nextLegislationNumber = `B-${String(maxLegislationNumber + 1).padStart(3, '0')}`; // Prefix with B-
 
             const isMandatoryProposal = userProvince === "Administrator";
 
             const newProposal = {
-                legislationNumber: nextLegislationNumber,
-                type: 'budget', // Mark as budget proposal
+                legislationNumber: nextLegislationNumber, // Assign legislation number
+                type: 'budget', // Explicitly set type as 'budget'
                 budgetType,
                 totalAmount: parseFloat(totalAmount),
                 budgetPurpose,
@@ -86,9 +89,9 @@ const CreateBudgetProposal = ({ onBackToDashboard, userProvince }) => {
                     description: item.description.trim()
                 })),
                 justification,
-                title: `Budget for ${budgetType} - #${nextLegislationNumber}`, // Auto-generated title for card
-                purpose: budgetPurpose.substring(0, 150) + (budgetPurpose.length > 150 ? '...' : ''), // Synopsis for card
-                synopsis: budgetPurpose.substring(0, 150) + (budgetPurpose.length > 150 ? '...' : ''), // Synopsis for card
+                title: `${budgetType} Proposal #${nextLegislationNumber}`, // Formatted title for card
+                purpose: budgetPurpose.substring(0, 150) + (budgetPurpose.length > 150 ? '...' : ''),
+                synopsis: budgetPurpose.substring(0, 150) + (budgetPurpose.length > 150 ? '...' : ''),
                 proposerProvince: userProvince,
                 dateCreated: new Date().toISOString(),
                 expiryDate: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
@@ -158,7 +161,7 @@ const CreateBudgetProposal = ({ onBackToDashboard, userProvince }) => {
                                     fill="#8884d8"
                                     dataKey="value"
                                     label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                                    labelLine={false} // Hide the line connecting label to slice
+                                    labelLine={false}
                                 >
                                     {pieChartData.map((entry, index) => (
                                         <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
@@ -315,7 +318,7 @@ const CreateBudgetProposal = ({ onBackToDashboard, userProvince }) => {
 
                 {showPreview && (
                     <div className="mt-8">
-                        <h3 className="text-2xl font-bold text-gray-800 mb-4 text-center">Budget Proposal Document Preview</h3>
+                        <h3 className="text-2xl font-bold text-center text-gray-800 mb-4 text-center">Budget Proposal Document Preview</h3>
                         <BudgetProposalPreview />
                     </div>
                 )}

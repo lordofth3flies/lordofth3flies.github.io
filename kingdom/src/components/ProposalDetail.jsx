@@ -4,7 +4,7 @@ import { doc, getDoc, onSnapshot, updateDoc } from 'firebase/firestore'; // Impo
 import AmendmentForm from './AmendmentForm'; // Adjust path
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts'; // Import Recharts components
 
-// Helper function for highlighting diffs - moved here for local use
+// Helper function for highlighting diffs (for law proposals)
 const generateHighlightedDiff = (originalText, amendedText, isAmendmentOfAmendment = false) => {
     const orig = String(originalText || '');
     const amnd = String(amendedText || '');
@@ -129,21 +129,17 @@ const ProposalDetail = ({ proposalId, onBackToDashboard, userProvince }) => {
                 return;
             }
 
+            // Determine if voting is on an amendment or the main proposal
             if (currentProposal.amendment && currentProposal.amendment.status === 'active') {
-                const amendmentDocRef = doc(db, `artifacts/${appId}/public/data/proposals/${proposal.id}/amendments`, currentProposal.amendment.id);
-                const currentAmendmentSnap = await getDoc(amendmentDocRef);
-                if (!currentAmendmentSnap.exists()) {
-                    setMessage('Error: Active amendment not found.');
-                    return;
-                }
-                const currentAmendment = currentAmendmentSnap.data();
-
-                const newAmendmentVotes = { ...currentAmendment.votes, [userProvince]: voteType };
+                const updatedAmendment = { ...currentProposal.amendment };
+                const newAmendmentVotes = { ...updatedAmendment.votes, [userProvince]: voteType };
                 const newAmendmentVoteCounts = calculateWeightedVotes(newAmendmentVotes, provinces);
 
-                await updateDoc(amendmentDocRef, {
-                    votes: newAmendmentVotes,
-                    voteCounts: newAmendmentVoteCounts
+                updatedAmendment.votes = newAmendmentVotes;
+                updatedAmendment.voteCounts = newAmendmentVoteCounts;
+
+                await updateDoc(proposalDocRef, {
+                    amendment: updatedAmendment // Update the entire amendment object on the main proposal
                 });
                 setMessage(`Voted '${voteType}' on the amendment.`);
             } else {
@@ -238,6 +234,7 @@ const ProposalDetail = ({ proposalId, onBackToDashboard, userProvince }) => {
         return <div className="min-h-screen flex items-center justify-center bg-gray-100"><p className="text-gray-700">Proposal data not available.</p></div>;
     }
 
+    // Determine which votes and vote counts to display
     const currentVotes = proposal.amendment && proposal.amendment.status === 'active'
         ? proposal.amendment.votes || {}
         : proposal.votes || {};
@@ -248,6 +245,7 @@ const ProposalDetail = ({ proposalId, onBackToDashboard, userProvince }) => {
 
     let amendmentIndicator = null;
     let isAmendmentOfAmendment = false;
+    let amendmentProposer = null;
 
     if (proposal.amendment && proposal.amendment.status === 'active') {
         amendmentIndicator = (
@@ -258,6 +256,7 @@ const ProposalDetail = ({ proposalId, onBackToDashboard, userProvince }) => {
         if (proposal.amendment.amendmentOfAmendment) {
             isAmendmentOfAmendment = true;
         }
+        amendmentProposer = proposal.amendment.proposerProvince; // Get amendment proposer
     }
 
     const isVotingActive = new Date(proposal.expiryDate).getTime() > new Date().getTime() && proposal.status === 'active';
@@ -266,11 +265,71 @@ const ProposalDetail = ({ proposalId, onBackToDashboard, userProvince }) => {
 
     // Helper to render budget details
     const renderBudgetDetails = () => {
-        // Prepare data for the pie chart
-        const pieChartData = proposal.lineItems ? proposal.lineItems.map(item => ({
+        // Use amended line items if an amendment is active, otherwise use original
+        const displayedLineItems = proposal.amendment && proposal.amendment.status === 'active' && proposal.amendment.amendedLineItems
+            ? proposal.amendment.amendedLineItems
+            : proposal.lineItems;
+
+        const originalLineItemsForDiff = proposal.amendment && proposal.amendment.status === 'active' && proposal.amendment.originalLineItems
+            ? proposal.amendment.originalLineItems
+            : proposal.lineItems;
+
+        const pieChartData = displayedLineItems ? displayedLineItems.map(item => ({
             name: item.title,
             value: parseFloat(item.amount)
         })) : [];
+
+        // Function to generate diff for budget line items (simplified for display here)
+        const generateBudgetLineItemDiffDisplay = (originalItems, amendedItems, isAmendmentOfAmendment) => {
+            const diffRender = [];
+            const originalMap = new Map(originalItems.map(item => [item.title, item]));
+            const amendedMap = new Map(amendedItems.map(item => [item.title, item]));
+
+            // Check for added or modified items
+            amendedItems.forEach((amendedItem, index) => {
+                const originalItem = originalMap.get(amendedItem.title);
+                if (!originalItem) {
+                    // Added item
+                    const colorClass = isAmendmentOfAmendment ? 'text-green-600' : 'text-blue-600';
+                    diffRender.push(
+                        <li key={`added-${index}`} className={`text-sm ${colorClass}`}>
+                            <span className="font-medium">{amendedItem.title}:</span> ${parseFloat(amendedItem.amount).toLocaleString()} - {amendedItem.description} (Added)
+                        </li>
+                    );
+                } else if (parseFloat(originalItem.amount) !== parseFloat(amendedItem.amount) || originalItem.description !== amendedItem.description) {
+                    // Modified item (amount or description changed)
+                    const colorClass = isAmendmentOfAmendment ? 'text-green-600' : 'text-blue-600';
+                     diffRender.push(
+                        <li key={`modified-${index}`} className={`text-sm ${colorClass}`}>
+                            <span className="font-medium">{amendedItem.title}:</span> <span className="line-through text-red-500">${parseFloat(originalItem.amount).toLocaleString()}</span> &rarr; ${parseFloat(amendedItem.amount).toLocaleString()} - {amendedItem.description} (Modified)
+                        </li>
+                    );
+                } else {
+                    // Unchanged item
+                    diffRender.push(
+                        <li key={`unchanged-${index}`} className="text-sm text-gray-700">
+                            <span className="font-medium">{amendedItem.title}:</span> ${parseFloat(amendedItem.amount).toLocaleString()} - {amendedItem.description}
+                        </li>
+                    );
+                }
+            });
+
+            // Check for removed items
+            originalItems.forEach((originalItem, index) => {
+                if (!amendedMap.has(originalItem.title)) {
+                    // Removed item
+                    const colorClass = isAmendmentOfAmendment ? 'text-orange-600 line-through' : 'text-red-600 line-through';
+                    diffRender.push(
+                        <li key={`removed-${index}`} className={`text-sm ${colorClass}`}>
+                            <span className="font-medium">{originalItem.title}:</span> ${parseFloat(originalItem.amount).toLocaleString()} - {originalItem.description} (Removed)
+                        </li>
+                    );
+                }
+            });
+
+            return diffRender;
+        };
+
 
         return (
             <div className="bg-gray-50 p-6 rounded-xl border border-gray-200 shadow-inner mb-6">
@@ -284,17 +343,28 @@ const ProposalDetail = ({ proposalId, onBackToDashboard, userProvince }) => {
                     <span className="font-semibold">Purpose:</span> {proposal.budgetPurpose}
                 </p>
                 <h4 className="text-md font-semibold text-gray-800 mb-2">Line Items:</h4>
-                {proposal.lineItems && proposal.lineItems.length > 0 ? (
+                {proposal.amendment && proposal.amendment.status === 'active' ? (
                     <ul className="list-disc list-inside ml-4 mb-4">
-                        {proposal.lineItems.map((item, index) => (
-                            <li key={index} className="text-sm text-gray-700">
-                                <span className="font-medium">{item.title}:</span> ${parseFloat(item.amount).toLocaleString()} - {item.description}
-                            </li>
-                        ))}
+                        {generateBudgetLineItemDiffDisplay(
+                            originalLineItemsForDiff,
+                            displayedLineItems,
+                            isAmendmentOfAmendment
+                        )}
                     </ul>
                 ) : (
-                    <p className="text-sm text-gray-500 mb-4">No line items specified.</p>
+                    proposal.lineItems && proposal.lineItems.length > 0 ? (
+                        <ul className="list-disc list-inside ml-4 mb-4">
+                            {proposal.lineItems.map((item, index) => (
+                                <li key={index} className="text-sm text-gray-700">
+                                    <span className="font-medium">{item.title}:</span> ${parseFloat(item.amount).toLocaleString()} - {item.description}
+                                </li>
+                            ))}
+                        </ul>
+                    ) : (
+                        <p className="text-sm text-gray-500 mb-4">No line items specified.</p>
+                    )
                 )}
+
 
                 {/* Pie Chart for Line Items */}
                 {pieChartData.length > 0 && pieChartData.some(data => data.value > 0) && (
@@ -324,7 +394,11 @@ const ProposalDetail = ({ proposalId, onBackToDashboard, userProvince }) => {
                 )}
 
                 <p className="text-gray-700 mt-4">
-                    <span className="font-semibold">Justification:</span> {proposal.justification}
+                    <span className="font-semibold">Justification:</span>
+                    {proposal.amendment && proposal.amendment.status === 'active' && proposal.amendment.amendedJustification ?
+                        generateHighlightedDiff(proposal.justification, proposal.amendment.amendedJustification, isAmendmentOfAmendment) :
+                        proposal.justification
+                    }
                 </p>
             </div>
         );
@@ -381,6 +455,11 @@ const ProposalDetail = ({ proposalId, onBackToDashboard, userProvince }) => {
                             <p className="text-gray-700 text-sm mb-2">
                                 <span className="font-semibold">Proposer:</span> {proposal.proposerProvince}
                             </p>
+                            {proposal.amendment && proposal.amendment.status === 'active' && (
+                                <p className="text-gray-700 text-sm mb-2">
+                                    <span className="font-semibold">Amendment Proposed By:</span> {proposal.amendment.proposerProvince}
+                                </p>
+                            )}
                             <p className="text-gray-700 text-sm mb-2">
                                 <span className="font-semibold">Date Proposed:</span> {new Date(proposal.dateCreated).toLocaleDateString()}</p>
                             <p className="text-gray-700 text-sm">

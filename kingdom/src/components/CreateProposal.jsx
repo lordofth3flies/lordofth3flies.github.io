@@ -1,6 +1,6 @@
 import React, { useState, useContext } from 'react';
 import { FirebaseContext } from '../App'; // Adjust path
-import { collection, addDoc, getDocs } from 'firebase/firestore'; // Import necessary functions
+import { collection, addDoc, getDocs, query, where } from 'firebase/firestore'; // Import query and where
 
 const CreateProposal = ({ onBackToDashboard, userProvince }) => {
     const { db, appId } = useContext(FirebaseContext);
@@ -56,23 +56,27 @@ const CreateProposal = ({ onBackToDashboard, userProvince }) => {
         setLoading(true);
         try {
             const proposalsCollectionRef = collection(db, `artifacts/${appId}/public/data/proposals`);
-            const querySnapshot = await getDocs(proposalsCollectionRef);
+            // Query only for 'law' type proposals to get the next number
+            const lawProposalsQuery = query(proposalsCollectionRef, where('type', '==', 'law'));
+            const querySnapshot = await getDocs(lawProposalsQuery);
+
             let maxLegislationNumber = 0;
             querySnapshot.forEach(docSnap => {
                 const data = docSnap.data();
-                if (data.legislationNumber) {
-                    const num = parseInt(data.legislationNumber, 10);
+                if (data.legislationNumber && data.legislationNumber.startsWith('L-')) {
+                    const num = parseInt(data.legislationNumber.substring(2), 10); // Extract number after 'L-'
                     if (!isNaN(num) && num > maxLegislationNumber) {
                         maxLegislationNumber = num;
                     }
                 }
             });
-            const nextLegislationNumber = String(maxLegislationNumber + 1).padStart(3, '0');
+            const nextLegislationNumber = `L-${String(maxLegislationNumber + 1).padStart(3, '0')}`; // Prefix with L-
 
             const isMandatoryProposal = userProvince === "Administrator";
 
             const newProposal = {
-                legislationNumber: nextLegislationNumber,
+                legislationNumber: nextLegislationNumber, // Assign legislation number
+                type: 'law', // Explicitly set type as 'law'
                 title,
                 purpose,
                 synopsis: purpose.substring(0, 150) + (purpose.length > 150 ? '...' : ''),
@@ -91,7 +95,7 @@ const CreateProposal = ({ onBackToDashboard, userProvince }) => {
             };
 
             await addDoc(proposalsCollectionRef, newProposal);
-            console.log("Proposal submitted successfully!");
+            console.log("Law Proposal submitted successfully!");
             setLoading(false);
             onBackToDashboard();
         } catch (e) {
@@ -204,9 +208,8 @@ const CreateProposal = ({ onBackToDashboard, userProvince }) => {
                 </div>
 
                 <div className="flex justify-between items-center mt-8">
-                    {/* Swapped position of Preview and Cancel */}
                     <button
-                        onClick={onBackToDashboard} // Cancel button
+                        onClick={onBackToDashboard}
                         className="bg-gray-400 hover:bg-gray-500 text-white font-bold py-3 px-6 rounded-xl shadow-md transition duration-200 ease-in-out transform hover:scale-105"
                     >
                         Cancel
