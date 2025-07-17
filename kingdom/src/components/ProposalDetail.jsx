@@ -4,8 +4,8 @@ import { doc, getDoc, onSnapshot, updateDoc } from 'firebase/firestore'; // Impo
 import AmendmentForm from './AmendmentForm'; // Adjust path
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts'; // Import Recharts components
 
-// Helper function for highlighting diffs (for law proposals)
-const generateHighlightedDiff = (originalText, amendedText, isAmendmentOfAmendment = false) => {
+// Helper function for highlighting text diffs (for law proposals)
+const generateHighlightedTextDiff = (originalText, amendedText, isAmendmentOfAmendment = false) => {
     const orig = String(originalText || '');
     const amnd = String(amendedText || '');
 
@@ -13,35 +13,44 @@ const generateHighlightedDiff = (originalText, amendedText, isAmendmentOfAmendme
     const amendedLines = amnd.split('\n');
 
     const finalRender = [];
-    const originalLineSet = new Set(originalLines);
-    const amendedLineSet = new Set(amendedLines);
 
-    const processedOriginalLines = new Set();
-    const processedAmendedLines = new Set();
+    // This is a simplified diff. For robust, complex diffs (e.g., character-level, reordering),
+    // a dedicated diffing library (like diff-match-patch) would be necessary.
+    // This version focuses on clearly showing line additions and deletions.
+
+    const tempOriginalLines = [...originalLines]; // Create a mutable copy
 
     for (let i = 0; i < amendedLines.length; i++) {
-        const currentAmendedLine = amendedLines[i];
-        const isUnchanged = originalLineSet.has(currentAmendedLine) && !processedOriginalLines.has(currentAmendedLine);
+        const amendedLine = amendedLines[i];
+        const originalIndex = tempOriginalLines.indexOf(amendedLine);
 
-        if (isUnchanged) {
-            finalRender.push(<span key={`unchanged-${i}`} className="text-gray-700">{currentAmendedLine}<br/></span>);
-            processedOriginalLines.add(currentAmendedLine);
-            processedAmendedLines.add(currentAmendedLine);
-        } else if (!originalLineSet.has(currentAmendedLine)) {
+        if (originalIndex !== -1) {
+            // Line exists in both and hasn't been "consumed" yet from original
+            // Add any removed lines that appeared before this matched line in the original
+            for (let j = 0; j < originalIndex; j++) {
+                if (tempOriginalLines[j] !== null) { // If not already matched
+                    const colorClass = isAmendmentOfAmendment ? 'text-orange-600 line-through' : 'text-red-600 line-through';
+                    finalRender.push(<span key={`removed-${j}-${i}`} className={colorClass}>{tempOriginalLines[j]}<br/></span>);
+                }
+            }
+            // Add the unchanged line
+            finalRender.push(<span key={`unchanged-${i}`} className="text-gray-700">{amendedLine}<br/></span>);
+            tempOriginalLines.splice(0, originalIndex + 1, ...Array(originalIndex + 1).fill(null)); // Mark consumed
+        } else {
+            // Line is new (added)
             const colorClass = isAmendmentOfAmendment ? 'text-green-600' : 'text-blue-600';
-            finalRender.push(<span key={`added-${i}`} className={colorClass}>{currentAmendedLine}<br/></span>);
-            processedAmendedLines.add(currentAmendedLine);
+            finalRender.push(<span key={`added-${i}`} className={colorClass}>{amendedLine}<br/></span>);
         }
     }
 
-    for (let i = 0; i < originalLines.length; i++) {
-        const currentOriginalLine = originalLines[i];
-        if (!amendedLineSet.has(currentOriginalLine) && !processedOriginalLines.has(currentOriginalLine)) {
+    // After iterating through all amended lines, add any remaining original lines as removed
+    tempOriginalLines.forEach((line, index) => {
+        if (line !== null) {
             const colorClass = isAmendmentOfAmendment ? 'text-orange-600 line-through' : 'text-red-600 line-through';
-            finalRender.push(<span key={`removed-${i}`} className={colorClass}>{currentOriginalLine}<br/></span>);
-            processedOriginalLines.add(currentOriginalLine);
+            finalRender.push(<span key={`final-removed-${index}`} className={colorClass}>{line}<br/></span>);
         }
-    }
+    });
+
     return finalRender;
 };
 
@@ -129,8 +138,8 @@ const ProposalDetail = ({ proposalId, onBackToDashboard, userProvince }) => {
                 return;
             }
 
-            // Determine if voting is on an amendment or the main proposal
             if (currentProposal.amendment && currentProposal.amendment.status === 'active') {
+                // Update votes directly on the amendment object within the main proposal document
                 const updatedAmendment = { ...currentProposal.amendment };
                 const newAmendmentVotes = { ...updatedAmendment.votes, [userProvince]: voteType };
                 const newAmendmentVoteCounts = calculateWeightedVotes(newAmendmentVotes, provinces);
@@ -139,7 +148,7 @@ const ProposalDetail = ({ proposalId, onBackToDashboard, userProvince }) => {
                 updatedAmendment.voteCounts = newAmendmentVoteCounts;
 
                 await updateDoc(proposalDocRef, {
-                    amendment: updatedAmendment // Update the entire amendment object on the main proposal
+                    amendment: updatedAmendment // Update the entire amendment object
                 });
                 setMessage(`Voted '${voteType}' on the amendment.`);
             } else {
@@ -245,7 +254,7 @@ const ProposalDetail = ({ proposalId, onBackToDashboard, userProvince }) => {
 
     let amendmentIndicator = null;
     let isAmendmentOfAmendment = false;
-    let amendmentProposer = null;
+    // Removed unused 'amendmentProposer' variable from declaration
 
     if (proposal.amendment && proposal.amendment.status === 'active') {
         amendmentIndicator = (
@@ -256,7 +265,7 @@ const ProposalDetail = ({ proposalId, onBackToDashboard, userProvince }) => {
         if (proposal.amendment.amendmentOfAmendment) {
             isAmendmentOfAmendment = true;
         }
-        amendmentProposer = proposal.amendment.proposerProvince; // Get amendment proposer
+        // amendmentProposer is now used directly in JSX if needed, not as a separate variable
     }
 
     const isVotingActive = new Date(proposal.expiryDate).getTime() > new Date().getTime() && proposal.status === 'active';
@@ -282,13 +291,36 @@ const ProposalDetail = ({ proposalId, onBackToDashboard, userProvince }) => {
         // Function to generate diff for budget line items (simplified for display here)
         const generateBudgetLineItemDiffDisplay = (originalItems, amendedItems, isAmendmentOfAmendment) => {
             const diffRender = [];
-            const originalMap = new Map(originalItems.map(item => [item.title, item]));
-            const amendedMap = new Map(amendedItems.map(item => [item.title, item]));
+            const originalMap = new Map();
+            originalItems.forEach((item, index) => originalMap.set(item.title, { ...item, originalIndex: index }));
+            const amendedMap = new Map();
+            amendedItems.forEach((item, index) => amendedMap.set(item.title, { ...item, amendedIndex: index }));
 
-            // Check for added or modified items
+            const processedOriginalTitles = new Set();
+
+            // First, process amended items to find added or modified items
             amendedItems.forEach((amendedItem, index) => {
                 const originalItem = originalMap.get(amendedItem.title);
-                if (!originalItem) {
+                if (originalItem) {
+                    processedOriginalTitles.add(originalItem.title); // Mark this original item as processed
+
+                    if (parseFloat(originalItem.amount) !== parseFloat(amendedItem.amount) || originalItem.description !== amendedItem.description) {
+                        // Modified item (amount or description changed)
+                        const colorClass = isAmendmentOfAmendment ? 'text-green-600' : 'text-blue-600';
+                        diffRender.push(
+                            <li key={`modified-${index}`} className={`text-sm ${colorClass}`}>
+                                <span className="font-medium">{amendedItem.title}:</span> <span className="line-through text-red-500">${parseFloat(originalItem.amount).toLocaleString()}</span> &rarr; ${parseFloat(amendedItem.amount).toLocaleString()} - {amendedItem.description} (Modified)
+                            </li>
+                        );
+                    } else {
+                        // Unchanged item
+                        diffRender.push(
+                            <li key={`unchanged-${index}`} className="text-sm text-gray-700">
+                                <span className="font-medium">{amendedItem.title}:</span> ${parseFloat(amendedItem.amount).toLocaleString()} - {amendedItem.description}
+                            </li>
+                        );
+                    }
+                } else {
                     // Added item
                     const colorClass = isAmendmentOfAmendment ? 'text-green-600' : 'text-blue-600';
                     diffRender.push(
@@ -296,27 +328,12 @@ const ProposalDetail = ({ proposalId, onBackToDashboard, userProvince }) => {
                             <span className="font-medium">{amendedItem.title}:</span> ${parseFloat(amendedItem.amount).toLocaleString()} - {amendedItem.description} (Added)
                         </li>
                     );
-                } else if (parseFloat(originalItem.amount) !== parseFloat(amendedItem.amount) || originalItem.description !== amendedItem.description) {
-                    // Modified item (amount or description changed)
-                    const colorClass = isAmendmentOfAmendment ? 'text-green-600' : 'text-blue-600';
-                     diffRender.push(
-                        <li key={`modified-${index}`} className={`text-sm ${colorClass}`}>
-                            <span className="font-medium">{amendedItem.title}:</span> <span className="line-through text-red-500">${parseFloat(originalItem.amount).toLocaleString()}</span> &rarr; ${parseFloat(amendedItem.amount).toLocaleString()} - {amendedItem.description} (Modified)
-                        </li>
-                    );
-                } else {
-                    // Unchanged item
-                    diffRender.push(
-                        <li key={`unchanged-${index}`} className="text-sm text-gray-700">
-                            <span className="font-medium">{amendedItem.title}:</span> ${parseFloat(amendedItem.amount).toLocaleString()} - {amendedItem.description}
-                        </li>
-                    );
                 }
             });
 
             // Check for removed items
             originalItems.forEach((originalItem, index) => {
-                if (!amendedMap.has(originalItem.title)) {
+                if (!processedOriginalTitles.has(originalItem.title)) {
                     // Removed item
                     const colorClass = isAmendmentOfAmendment ? 'text-orange-600 line-through' : 'text-red-600 line-through';
                     diffRender.push(
@@ -327,6 +344,8 @@ const ProposalDetail = ({ proposalId, onBackToDashboard, userProvince }) => {
                 }
             });
 
+            // Note: This simplified diff does not guarantee exact original order for combined output
+            // if lines were heavily reordered. It prioritizes showing all changes clearly.
             return diffRender;
         };
 
@@ -396,7 +415,7 @@ const ProposalDetail = ({ proposalId, onBackToDashboard, userProvince }) => {
                 <p className="text-gray-700 mt-4">
                     <span className="font-semibold">Justification:</span>
                     {proposal.amendment && proposal.amendment.status === 'active' && proposal.amendment.amendedJustification ?
-                        generateHighlightedDiff(proposal.justification, proposal.amendment.amendedJustification, isAmendmentOfAmendment) :
+                        generateHighlightedTextDiff(proposal.justification, proposal.amendment.amendedJustification, isAmendmentOfAmendment) :
                         proposal.justification
                     }
                 </p>
@@ -417,7 +436,7 @@ const ProposalDetail = ({ proposalId, onBackToDashboard, userProvince }) => {
             <p className="text-gray-800 font-bold text-lg mb-2">THEREFORE, let the following changes be enacted:</p>
             <div className="bg-white p-4 rounded-lg border border-gray-300 whitespace-pre-wrap text-gray-700 font-mono">
                 {proposal.amendment && proposal.amendment.status === 'active' ?
-                    generateHighlightedDiff(proposal.changes, proposal.amendment.amendedText, isAmendmentOfAmendment) :
+                    generateHighlightedTextDiff(proposal.changes, proposal.amendment.amendedText, isAmendmentOfAmendment) :
                     proposal.changes
                 }
             </div>

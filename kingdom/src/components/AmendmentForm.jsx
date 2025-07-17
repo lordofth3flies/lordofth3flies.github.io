@@ -1,7 +1,7 @@
 import React, { useState, useContext } from 'react';
 import { FirebaseContext } from '../App'; // Adjust path
 import { doc, getDoc, updateDoc } from 'firebase/firestore'; // Import necessary functions
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts'; // Import Recharts components
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'; // Removed Legend from import as it's not directly used in this component.
 
 // Define a set of colors for the pie chart slices
 const PIE_COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658', '#d0ed57', '#a4de6c', '#83a6ed'];
@@ -15,48 +15,80 @@ const generateHighlightedTextDiff = (originalText, amendedText, isAmendmentOfAme
     const amendedLines = amnd.split('\n');
 
     const finalRender = [];
-    const originalLineSet = new Set(originalLines);
-    const amendedLineSet = new Set(amendedLines);
 
-    const processedOriginalLines = new Set();
-    const processedAmendedLines = new Set();
+    // This is a simplified diff. For robust, complex diffs (e.g., character-level, reordering),
+    // a dedicated diffing library (like diff-match-patch) would be necessary.
+    // This version focuses on clearly showing line additions and deletions.
+
+    const tempOriginalLines = [...originalLines]; // Create a mutable copy
 
     for (let i = 0; i < amendedLines.length; i++) {
-        const currentAmendedLine = amendedLines[i];
-        const isUnchanged = originalLineSet.has(currentAmendedLine) && !processedOriginalLines.has(currentAmendedLine);
+        const amendedLine = amendedLines[i];
+        const originalIndex = tempOriginalLines.indexOf(amendedLine);
 
-        if (isUnchanged) {
-            finalRender.push(<span key={`unchanged-${i}`} className="text-gray-700">{currentAmendedLine}<br/></span>);
-            processedOriginalLines.add(currentAmendedLine);
-            processedAmendedLines.add(currentAmendedLine);
-        } else if (!originalLineSet.has(currentAmendedLine)) {
+        if (originalIndex !== -1) {
+            // Line exists in both and hasn't been "consumed" yet from original
+            // Add any removed lines that appeared before this matched line in the original
+            for (let j = 0; j < originalIndex; j++) {
+                if (tempOriginalLines[j] !== null) { // If not already matched
+                    const colorClass = isAmendmentOfAmendment ? 'text-orange-600 line-through' : 'text-red-600 line-through';
+                    finalRender.push(<span key={`removed-${j}-${i}`} className={colorClass}>{tempOriginalLines[j]}<br/></span>);
+                }
+            }
+            // Add the unchanged line
+            finalRender.push(<span key={`unchanged-${i}`} className="text-gray-700">{amendedLine}<br/></span>);
+            tempOriginalLines.splice(0, originalIndex + 1, ...Array(originalIndex + 1).fill(null)); // Mark consumed
+        } else {
+            // Line is new (added)
             const colorClass = isAmendmentOfAmendment ? 'text-green-600' : 'text-blue-600';
-            finalRender.push(<span key={`added-${i}`} className={colorClass}>{currentAmendedLine}<br/></span>);
-            processedAmendedLines.add(currentAmendedLine);
+            finalRender.push(<span key={`added-${i}`} className={colorClass}>{amendedLine}<br/></span>);
         }
     }
 
-    for (let i = 0; i < originalLines.length; i++) {
-        const currentOriginalLine = originalLines[i];
-        if (!amendedLineSet.has(currentOriginalLine) && !processedOriginalLines.has(currentOriginalLine)) {
+    // After iterating through all amended lines, add any remaining original lines as removed
+    tempOriginalLines.forEach((line, index) => {
+        if (line !== null) {
             const colorClass = isAmendmentOfAmendment ? 'text-orange-600 line-through' : 'text-red-600 line-through';
-            finalRender.push(<span key={`removed-${i}`} className={colorClass}>{currentOriginalLine}<br/></span>);
-            processedOriginalLines.add(currentOriginalLine);
+            finalRender.push(<span key={`final-removed-${index}`} className={colorClass}>{line}<br/></span>);
         }
-    }
+    });
+
     return finalRender;
 };
 
 // Helper function for highlighting budget line item diffs
 const generateBudgetLineItemDiffDisplay = (originalItems, amendedItems, isAmendmentOfAmendment) => {
     const diffRender = [];
-    const originalMap = new Map(originalItems.map(item => [item.title, item]));
-    const amendedMap = new Map(amendedItems.map(item => [item.title, item]));
+    const originalMap = new Map();
+    originalItems.forEach((item, index) => originalMap.set(item.title, { ...item, originalIndex: index }));
+    const amendedMap = new Map();
+    amendedItems.forEach((item, index) => amendedMap.set(item.title, { ...item, amendedIndex: index }));
 
-    // Iterate through amended items to find added or modified
+    const processedOriginalTitles = new Set();
+
+    // First, process amended items to find added or modified items
     amendedItems.forEach((amendedItem, index) => {
         const originalItem = originalMap.get(amendedItem.title);
-        if (!originalItem) {
+        if (originalItem) {
+            processedOriginalTitles.add(originalItem.title); // Mark this original item as processed
+
+            if (parseFloat(originalItem.amount) !== parseFloat(amendedItem.amount) || originalItem.description !== amendedItem.description) {
+                // Modified item (amount or description changed)
+                const colorClass = isAmendmentOfAmendment ? 'text-green-600' : 'text-blue-600';
+                diffRender.push(
+                    <li key={`modified-${index}`} className={`text-sm ${colorClass}`}>
+                        <span className="font-medium">{amendedItem.title}:</span> <span className="line-through text-red-500">${parseFloat(originalItem.amount).toLocaleString()}</span> &rarr; ${parseFloat(amendedItem.amount).toLocaleString()} - {amendedItem.description} (Modified)
+                    </li>
+                );
+            } else {
+                // Unchanged item
+                diffRender.push(
+                    <li key={`unchanged-${index}`} className="text-sm text-gray-700">
+                        <span className="font-medium">{amendedItem.title}:</span> ${parseFloat(amendedItem.amount).toLocaleString()} - {amendedItem.description}
+                    </li>
+                );
+            }
+        } else {
             // Added item
             const colorClass = isAmendmentOfAmendment ? 'text-green-600' : 'text-blue-600';
             diffRender.push(
@@ -64,27 +96,12 @@ const generateBudgetLineItemDiffDisplay = (originalItems, amendedItems, isAmendm
                     <span className="font-medium">{amendedItem.title}:</span> ${parseFloat(amendedItem.amount).toLocaleString()} - {amendedItem.description} (Added)
                 </li>
             );
-        } else if (parseFloat(originalItem.amount) !== parseFloat(amendedItem.amount) || originalItem.description !== amendedItem.description) {
-            // Modified item (amount or description changed)
-            const colorClass = isAmendmentOfAmendment ? 'text-green-600' : 'text-blue-600';
-             diffRender.push(
-                <li key={`modified-${index}`} className={`text-sm ${colorClass}`}>
-                    <span className="font-medium">{amendedItem.title}:</span> <span className="line-through text-red-500">${parseFloat(originalItem.amount).toLocaleString()}</span> &rarr; ${parseFloat(amendedItem.amount).toLocaleString()} - {amendedItem.description} (Modified)
-                </li>
-            );
-        } else {
-            // Unchanged item
-            diffRender.push(
-                <li key={`unchanged-${index}`} className="text-sm text-gray-700">
-                    <span className="font-medium">{amendedItem.title}:</span> ${parseFloat(amendedItem.amount).toLocaleString()} - {amendedItem.description}
-                </li>
-            );
         }
     });
 
-    // Iterate through original items to find removed
+    // Second, process original items to find removed items
     originalItems.forEach((originalItem, index) => {
-        if (!amendedMap.has(originalItem.title)) {
+        if (!processedOriginalTitles.has(originalItem.title)) {
             // Removed item
             const colorClass = isAmendmentOfAmendment ? 'text-orange-600 line-through' : 'text-red-600 line-through';
             diffRender.push(
@@ -95,6 +112,8 @@ const generateBudgetLineItemDiffDisplay = (originalItems, amendedItems, isAmendm
         }
     });
 
+    // Note: This simplified diff does not guarantee exact original order for combined output
+    // if lines were heavily reordered. It prioritizes showing all changes clearly.
     return diffRender;
 };
 
@@ -132,7 +151,7 @@ const AmendmentForm = ({ proposal, onClose, userProvince, onAmendmentSubmitted }
     const handleLineItemChange = (index, field, value) => {
         const newLineItems = [...amendedLineItems];
         newLineItems[index][field] = value;
-        setAmendedLineItems(newLineItems); // Corrected this line
+        setAmendedLineItems(newLineItems);
     };
 
     const validateBudgetAmendment = () => {
